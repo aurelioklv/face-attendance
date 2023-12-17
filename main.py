@@ -2,6 +2,7 @@ import datetime
 import os
 import subprocess
 import tkinter as tk
+import tkinter.filedialog
 
 import cv2
 from PIL import Image, ImageTk
@@ -12,7 +13,7 @@ import util
 class App:
     def __init__(self):
         self.app_name = "Face Attendance System"
-        self.video_capture_idx = "/dev/video2"
+        self.video_capture_idx = "/dev/video0"
         self.main_window = tk.Tk()
         self.main_window.geometry("1100x520")
         self.main_window.resizable(False, False)
@@ -34,6 +35,16 @@ class App:
         )
         self.register_button_main_window.place(x=750, y=400)
 
+        self.select_face_image_button = util.get_button(
+            self.main_window, "Select Face Image", "blue", self.select_face_image
+        )
+        self.select_face_image_button.place(x=750, y=200)
+
+        self.select_face_image_button = util.get_button(
+            self.main_window, "Select Plate Image", "blue", self.select_plate_image
+        )
+        self.select_face_image_button.place(x=750, y=100)
+
         self.webcam_label = util.get_img_label(self.main_window)
         self.webcam_label.place(x=10, y=0, width=700, height=500)
 
@@ -45,18 +56,28 @@ class App:
     def login(self):
         unknown_image_path = "./.tmp.jpg"
         cv2.imwrite(unknown_image_path, self.most_recent_capture_arr)
-        output = str(
-            subprocess.check_output(
-                ["face_recognition", self.db_dir, unknown_image_path]
+
+        try:
+            # Run face_recognition command and use cut to extract the second field
+            output = subprocess.check_output(
+                f"face_recognition {self.db_dir} {unknown_image_path} --tolerance 0.4 | cut -d ',' -f2",
+                shell=True,
+                text=True,  # Decode output to string
             )
-        )
-        name = output.split(",")[1][:-3]
-        if name in ["no_persons_found", "unknown_person"]:
-            self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
-            util.msg_box("oops", "Please register or try again!")
-        else:
-            self.log("LOGIN:{}".format(name))
-            util.msg_box("Success", "Welcome, {}!".format(name))
+
+            name = output.strip()
+            if name in ["no_persons_found", "unknown_person"]:
+                self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
+                util.msg_box("Oops", "Please register or try again!")
+            else:
+                self.log("LOGIN: {}".format(name))
+                util.msg_box("Success", "Welcome, {}!".format(name))
+
+        except subprocess.CalledProcessError as e:
+            self.log(f"Error: {e}")
+            util.msg_box("Error", "An error occurred. Please try again.")
+
+        # Remove the temporary image file
         os.remove(unknown_image_path)
 
     def register(self):
@@ -87,6 +108,31 @@ class App:
         self.capture_label.place(x=10, y=0, width=700, height=500)
 
         self.add_img_to_label(self.capture_label)
+
+    def select_face_image(self):
+        file_path = tk.filedialog.askopenfilename(title="Select Image File")
+        if file_path:
+            self.detect_face_in_image(file_path)
+
+    def select_plate_image(self):
+        file_path = tk.filedialog.askopenfilename(title="Select Plate File")
+        if file_path:
+            self.detect_plate_in_image(file_path)
+
+    def detect_face_in_image(self, image_path):
+        output = str(
+            subprocess.check_output(["face_recognition", self.db_dir, image_path])
+        )
+        name = output.split(",")[1][:-3]
+        if name in ["no_persons_found", "unknown_person"]:
+            self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
+            util.msg_box("oops", "Please register or try again!")
+        else:
+            self.log("LOGIN:{}".format(name))
+            util.msg_box("Success", "Welcome, {}!".format(name))
+
+    def detect_plate_in_image(self, image_path):
+        pass
 
     def accept_register(self):
         name = self.entry_text_register_window.get("1.0", "end-1c")
