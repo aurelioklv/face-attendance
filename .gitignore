@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+images/
+stnkless-firebase-adminsdk-se6zg-61bd6321f3.json
+
 # C extensions
 *.so
 

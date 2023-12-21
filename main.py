@@ -9,7 +9,9 @@ from PIL import Image, ImageTk
 
 import util
 
-
+import os 
+import firebase_admin
+from firebase_admin import credentials, storage
 
 import tkinter as tk
 from ultralytics import YOLO
@@ -44,9 +46,8 @@ import time
 model = YOLO("best.pt")
 
 classNames = [
-    "0",
-    "0 0.3629690833333334 0.2073046875 0.255 0.194375",
     "face",
+    "motorcycle",
     "plate",
 ]
 
@@ -54,6 +55,41 @@ SHAPE = (128, 32)
 letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 
+
+# Fetch data from firebase
+# Initialize Firebase Admin SDK
+cred = credentials.Certificate("stnkless-firebase-adminsdk-se6zg-61bd6321f3.json")
+firebase_admin.initialize_app(cred, {'storageBucket': 'stnkless.appspot.com'})
+
+# Create a storage client
+bucket = storage.bucket()
+
+
+
+
+
+def download_image(remote_path, local_path):
+    blob = bucket.blob(remote_path)
+    blob.download_to_filename(local_path)
+    print(f"Image downloaded to {local_path}")
+
+    if blob.exists():
+        return True
+            
+    return False
+
+# ganti jadi email/image
+# remote_image_path = "dimasfadilah@gmail.com/0/Foto Wajah"  
+
+directory = "images"
+# parent_dir = "C:/Users/Daud/Documents/GitHub/stnkless-fetch-db"
+parent_dir = os.getcwd()
+path = os.path.join(parent_dir, directory) 
+# os.mkdir(path) 
+
+# local_image_path = "images/downloaded_image.jpg"
+
+# download_image(remote_image_path, local_image_path)
 
 def adjust_brightness(image, gamma):
     # Apply gamma correction to adjust brightness
@@ -304,7 +340,25 @@ class App:
             )
 
             name = output.strip()
-            if name in ["no_persons_found", "unknown_person"]:
+
+            remote_image_path = name + "/0/Foto Wajah"
+            directory = "images"
+            parent_dir = os.getcwd()
+            path = os.path.join(parent_dir, directory)
+            local_image_path = "images/" + name + ".jpg"
+
+            login_state = download_image(remote_image_path, local_image_path)
+            
+
+            # if name in ["no_persons_found", "unknown_person"]:
+            #     self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
+            #     util.msg_box("Oops", "Please register or try again!")
+            # else:
+            #     self.log("LOGIN: {}".format(name))
+            #     util.msg_box("Success", "Welcome, {}!".format(name))
+
+            
+            if login_state in ["no_persons_found", "unknown_person"]:
                 self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
                 util.msg_box("Oops", "Please register or try again!")
             else:
@@ -361,8 +415,26 @@ class App:
         output = str(
             subprocess.check_output(["face_recognition", self.db_dir, image_path])
         )
+        # apabila terdapat \r\n pada nama file maka akan dihapus
         name = output.split(",")[1][:-3]
-        if name in ["no_persons_found", "unknown_person"]:
+
+        name = name.split("\\")[0]
+
+        remote_image_path = name + "/0/Foto Wajah"
+        directory = "images"
+        parent_dir = os.getcwd()
+        path = os.path.join(parent_dir, directory)
+        local_image_path = "images/" + name + ".jpg"
+
+        # remove //r from local_image_path
+        local_image_path = local_image_path.replace("\\r", "")
+
+        print("[LOCAL IMAGE PATH]", local_image_path)
+        
+
+        login_state = download_image(remote_image_path, local_image_path)
+
+        if login_state in ["no_persons_found", "unknown_person"]:
             self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
             util.msg_box("oops", "Please register or try again!")
         else:
@@ -392,7 +464,7 @@ class App:
                 cls = int(box.cls[0])
 
                 # add code to crop image when key c is pressed
-                if int(box.cls[0]) == 3:
+                if int(box.cls[0]) == 2:
                     crop_img = img[y1:y2, x1:x2]
                     test_data_single_image_Prediction(model_crnn, crop_img)
 
