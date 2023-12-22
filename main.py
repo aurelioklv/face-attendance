@@ -1,49 +1,44 @@
 import datetime
+import math
 import os
 import subprocess
+import time
 import tkinter as tk
 import tkinter.filedialog
 
 import cv2
+import firebase_admin
+import keras.backend as K
+import numpy as np
+from firebase_admin import credentials, storage
+from keras.layers import (
+    GRU,
+    LSTM,
+    Activation,
+    BatchNormalization,
+    Bidirectional,
+    Concatenate,
+    Conv2D,
+    Dense,
+    Dot,
+    Dropout,
+    Flatten,
+    Input,
+    Lambda,
+    MaxPooling2D,
+    Multiply,
+    Permute,
+    ReLU,
+    RepeatVector,
+    Reshape,
+)
+from keras.models import Model
 from PIL import Image, ImageTk
+from ultralytics import YOLO
 
 import util
 
-import os 
-import firebase_admin
-from firebase_admin import credentials, storage
-
-import tkinter as tk
-from ultralytics import YOLO
-from keras.models import Model
-import math
-import keras.backend as K
-from keras.layers import (
-    Input,
-    Conv2D,
-    MaxPooling2D,
-    Reshape,
-    Bidirectional,
-    LSTM,
-    Dense,
-    Lambda,
-    Activation,
-    BatchNormalization,
-    Dropout,
-    ReLU,
-    GRU,
-    Dot,
-    Concatenate,
-    RepeatVector,
-    Permute,
-    Multiply,
-    Flatten,
-)
-
-import numpy as np
-import time
-
-model = YOLO("best.pt")
+model = YOLO("weights/best.pt")
 
 classNames = [
     "face",
@@ -55,17 +50,26 @@ SHAPE = (128, 32)
 letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 
-
 # Fetch data from firebase
 # Initialize Firebase Admin SDK
 cred = credentials.Certificate("stnkless-firebase-adminsdk-se6zg-61bd6321f3.json")
-firebase_admin.initialize_app(cred, {'storageBucket': 'stnkless.appspot.com'})
+firebase_admin.initialize_app(cred, {"storageBucket": "stnkless.appspot.com"})
 
 # Create a storage client
 bucket = storage.bucket()
 
 
+# Replace 'your_script.sh' with the path to your Bash script
+servo_script_path = "script.sh"
 
+
+def open_servo():
+    try:
+        # Run the Bash script
+        subprocess.run(["bash", servo_script_path], check=True)
+        print("Bash script executed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing Bash script: {e}")
 
 
 def download_image(remote_path, local_path):
@@ -75,21 +79,23 @@ def download_image(remote_path, local_path):
 
     if blob.exists():
         return True
-            
+
     return False
 
+
 # ganti jadi email/image
-# remote_image_path = "dimasfadilah@gmail.com/0/Foto Wajah"  
+# remote_image_path = "dimasfadilah@gmail.com/0/Foto Wajah"
 
 directory = "images"
 # parent_dir = "C:/Users/Daud/Documents/GitHub/stnkless-fetch-db"
 parent_dir = os.getcwd()
-path = os.path.join(parent_dir, directory) 
-# os.mkdir(path) 
+path = os.path.join(parent_dir, directory)
+# os.mkdir(path)
 
 # local_image_path = "images/downloaded_image.jpg"
 
 # download_image(remote_image_path, local_image_path)
+
 
 def adjust_brightness(image, gamma):
     # Apply gamma correction to adjust brightness
@@ -197,7 +203,6 @@ def test_data_single_image_Prediction(model, test_img_path):
         )[0][0]
     )
 
-
     # get x, y coordinates from image
     org = (0, 25)
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -211,7 +216,7 @@ def test_data_single_image_Prediction(model, test_img_path):
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename = f"cropped_image_{timestamp}.jpg"
-    cv2.imwrite(filename, test_img_path)
+    cv2.imwrite("plate/" + filename, test_img_path)
     print(f"Saved {filename}")
 
 
@@ -279,9 +284,7 @@ y_pred = Activation("softmax", name="softmax")(inner)
 
 
 model_crnn = Model(inputs=input_data, outputs=y_pred)
-model_crnn.load_weights("train_result.h5")
-
-
+model_crnn.load_weights("weights/train_result.h5")
 
 
 class App:
@@ -348,7 +351,6 @@ class App:
             local_image_path = "images/" + name + ".jpg"
 
             login_state = download_image(remote_image_path, local_image_path)
-            
 
             # if name in ["no_persons_found", "unknown_person"]:
             #     self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
@@ -357,11 +359,11 @@ class App:
             #     self.log("LOGIN: {}".format(name))
             #     util.msg_box("Success", "Welcome, {}!".format(name))
 
-            
             if login_state in ["no_persons_found", "unknown_person"]:
                 self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
                 util.msg_box("Oops", "Please register or try again!")
             else:
+                open_servo()
                 self.log("LOGIN: {}".format(name))
                 util.msg_box("Success", "Welcome, {}!".format(name))
 
@@ -430,7 +432,6 @@ class App:
         local_image_path = local_image_path.replace("\\r", "")
 
         print("[LOCAL IMAGE PATH]", local_image_path)
-        
 
         login_state = download_image(remote_image_path, local_image_path)
 
@@ -438,11 +439,12 @@ class App:
             self.log("UNDETECTED" if name == "no_persons_found" else "UNKNOWN")
             util.msg_box("oops", "Please register or try again!")
         else:
+            open_servo()
             self.log("LOGIN:{}".format(name))
             util.msg_box("Success", "Welcome, {}!".format(name))
 
     def detect_plate_in_image(self, image_path):
-        print("detecting plate in image", image_path);
+        print("detecting plate in image", image_path)
         img = cv2.imread(image_path)
         results = model(img, stream=True)
         for r in results:
@@ -451,7 +453,12 @@ class App:
             for box in boxes:
                 # bounding box
                 x1, y1, x2, y2 = box.xyxy[0]
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)  # convert to int values
+                x1, y1, x2, y2 = (
+                    int(x1),
+                    int(y1),
+                    int(x2),
+                    int(y2),
+                )  # convert to int values
 
                 # put box in cam
                 cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 255), 3)
@@ -467,7 +474,6 @@ class App:
                 if int(box.cls[0]) == 2:
                     crop_img = img[y1:y2, x1:x2]
                     test_data_single_image_Prediction(model_crnn, crop_img)
-
 
     def accept_register(self):
         name = self.entry_text_register_window.get("1.0", "end-1c")
@@ -497,11 +503,12 @@ class App:
         self.process_webcam()
 
     def process_webcam(self):
-
         # while True:
-            # success, img = cap.read()
+        # success, img = cap.read()
         ret, frame = self.cap.read()
         results = model(frame, stream=True)
+
+        raw_frame = frame.copy()
 
         # coordinates
         for r in results:
@@ -510,7 +517,12 @@ class App:
             for box in boxes:
                 # bounding box
                 x1, y1, x2, y2 = box.xyxy[0]
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)  # convert to int values
+                x1, y1, x2, y2 = (
+                    int(x1),
+                    int(y1),
+                    int(x2),
+                    int(y2),
+                )  # convert to int values
 
                 # put box in cam
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 3)
@@ -530,7 +542,6 @@ class App:
                 #     crop_img = img[y1:y2, x1:x2]
                 #     test_data_single_image_Prediction(model_crnn, crop_img)
 
-
                 # object details
                 org = [x1, y1]
                 font = cv2.FONT_HERSHEY_SIMPLEX
@@ -538,12 +549,13 @@ class App:
                 color = (255, 0, 0)
                 thickness = 2
 
-                cv2.putText(frame, classNames[cls], org, font, fontScale, color, thickness)
+                cv2.putText(
+                    frame, classNames[cls], org, font, fontScale, color, thickness
+                )
 
+        self.most_recent_capture_arr = raw_frame
 
-        self.most_recent_capture_arr = frame
-
-        img_ = cv2.cvtColor(self.most_recent_capture_arr, cv2.COLOR_BGR2RGB)
+        img_ = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         self.most_recent_capture_pil = Image.fromarray(img_)
 
         imgTk = ImageTk.PhotoImage(image=self.most_recent_capture_pil)
